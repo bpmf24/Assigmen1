@@ -1,418 +1,196 @@
+#include "../include/Files.h"
+#include "../include/GlobalVariables.h"
 #include <iostream>
-#include <fstream>
-#include "../include/Commands.h"
-
+#include <algorithm>
 using namespace std;
 
-BaseCommand::BaseCommand(string args) : args(args) {}
 
-string BaseCommand::getArgs() {
-    return args;
+BaseFile ::BaseFile(string name) :name(name) {
 }
 
-vector<string> BaseCommand::splitString(string args) {
-    vector<string> check;
-    string delim = "/";
-    auto start = 0U;
-    auto end = args.find(delim);
-    while (end != string::npos) {
-        check.push_back(args.substr(start, end - start));
-        start = end + delim.length();
-        end = args.find(delim, start);
-    }
-    check.push_back(args.substr(start, end));
 
-    return check;
+string BaseFile::getName() const {
+    return name;
 }
 
-Directory* BaseCommand:: getLastDir(string args, FileSystem &fs) {
-    Directory *start; //check if works
-    if (args[0] == '/') { //absolute path or relative
-        start = &fs.getRootDirectory();
+void BaseFile::setName(string newName) {
+    name = newName;
+}
+
+File ::File(string name, int size) : BaseFile(name),size(size)
+{}
+
+int File ::getSize() {
+    return size;
+}
+
+BaseFile* File::clone() const { return  new File(*this);}
+
+Directory::Directory(string name, Directory *parent) : BaseFile(name),parent(parent) ,children(){
+
+}
+
+
+Directory::Directory(const Directory& other):BaseFile(other.getName()) ,parent(nullptr),children(){
+    dircopy(other.children);
+    if(verbose==1 | verbose==3){
+        cout << "Directory::Directory(const Directory& other):BaseFile(other.getName()) ,parent(other.getParent()),children()";
     }
-    else {
-        start = &fs.getWorkingDirectory();
+}
+
+void Directory::dircopy(vector<BaseFile*> other)   {
+
+    for(int i=0 ;i<other.size();i++){
+        this->addFile((other[i]->clone()));
     }
-    vector<string> fileNames = splitString(args); //splits the path to seperate words
-    int i;
-    for (size_t  j = 0; j <fileNames.size(); j++) {
-        if (fileNames[j] == "..") {
-            start = start->getParent();
+}
+
+Directory:: Directory(Directory &&other):BaseFile(other.getName())
+{
+    if(verbose==1 | verbose==3) {
+        cout << "Directory:: Directory(Directory &&other):BaseFile(other.getName())";
+    }
+    clear();
+    steal(other);
+}
+
+void Directory :: steal(Directory& other)
+{
+    parent = other.getParent();
+    children = other.children;
+}
+
+Directory& Directory::operator=( Directory &&other)
+{
+    if(verbose==1 | verbose==3) {
+        cout << "Directory& Directory::operator=( Directory &&other)";
+    }
+    if(this != &other){
+        clear();
+        this->setName(other.getName());
+        steal(other);
+    }
+    return *this;
+}
+
+
+Directory& Directory::operator=(const Directory &other) {
+    if(verbose==1 | verbose==3) {
+        cout << "Directory& Directory::operator=(const Directory &other)";
+    }
+    if(this != &other){
+        clear();
+        this->setName(other.getName());
+        this->setParent(nullptr);
+        dircopy(other.children);
+    }
+    return *this;
+}
+
+
+
+Directory* Directory::getParent() const {
+    return parent;
+}
+
+void Directory::setParent(Directory *newParent) {
+    parent = newParent;
+}
+
+void Directory:: addFile(BaseFile* file){
+    if(typeid(Directory*) == typeid(file)){
+        dynamic_cast<Directory*>(file)->setParent(this);
+    }
+    children.push_back(file);
+}
+
+void Directory:: removeFile(string name) {
+    for (vector<BaseFile *>::iterator it = children.begin(); it != children.end(); it++) {
+        if ((*it)->getName() == name) {
+            if(typeid(Directory*) == typeid(*it)){
+                dynamic_cast<Directory*>(*it)->clear();
+            }
+            delete *it;
+            it = children.erase(it);
         }
-        else {
-            //go over all (start->getChildren()), check if directory and name = fileName
-            for (i = 0; i < start->getChildren().size(); i++) {
-                if (start->getName() == fileNames[j]){
-                    break;
-                }
-                if (typeid(*(start->getChildren()[i])) == typeid(Directory) &&
-                    start->getChildren()[i]->getName() == fileNames[j]) {
-                    start = dynamic_cast<Directory *>(start->getChildren()[i]);
-                    break;
-                }
-                if (j == fileNames.size()-1) {
-                    if (i == start->getChildren().size() - 1 && start->getChildren()[i]->getName() != fileNames[j]) {
-                        return start;
-                    }
-                }
-            }
-        }
     }
-    return start;
 }
 
-bool BaseCommand::isFileExists(string args, FileSystem &fs) {
-    Directory *start; //check if works
-    if (args[0] == '/') { //absolute path or relative
-        start = &fs.getRootDirectory();
-    } else {
-        start = &fs.getWorkingDirectory();
+Directory ::~ Directory(){
+    if(verbose == 1){
+        cout << "Directory ::~ Directory()" << endl;
     }
-    vector<string> fileNames = splitString(getArgs()); //splits the path to seperate words
-    for (size_t j = 0; j < fileNames.size(); j++) {
-        //go over all (start->getChildren()), check if directory and name = fileName
-        for (int i = 0; i < (start->getChildren().size()); i++) {
-            if (j == fileNames.size()-1){
-                if (typeid(*(start->getChildren()[i])) == typeid(File) && (start->getChildren()[i]->getName() == fileNames[j])) {
-                    return true;
-                }
-                else if(typeid(*(start->getChildren()[i])) == typeid(Directory) && (start->getChildren()[i]->getName() == fileNames[j])){
-                    return true;
-                }
-            }
-            else if (typeid(*(start->getChildren()[i])) == typeid(Directory) && (start->getChildren()[i]->getName() == fileNames[j])){
-                start = dynamic_cast<Directory *>((start->getChildren())[i]);
-                break;
-            }
-            if (i >= (start->getChildren()).size()) { //gone through all (start->getChildren()) and didnt find next directory
-                return false;
-            }
+    clear();
+};
+
+void Directory:: removeFile(BaseFile* file){
+    this->removeFile(file->getName());
+}
+
+void Directory::sortByName() {
+    sort(children.begin(), children.end(),[](BaseFile *baseFile1,BaseFile *baseFile2){
+        return baseFile1->getName()<baseFile2->getName();
+    });
+}
+
+void Directory::sortBySize() {
+    sort(children.begin(), children.end(),[](BaseFile *baseFile1,BaseFile *baseFile2){
+        if(baseFile1->getSize()== baseFile2->getSize())
+            return baseFile1->getName()<baseFile2->getName();
+        else
+            return baseFile1->getSize()<baseFile2->getSize();
+    });
+}
+
+vector<BaseFile*> Directory:: getChildren(){
+    return children ;
+}
+
+int Directory::getSize() {
+
+    int sum = 0;
+    for(vector<BaseFile*> ::iterator  it = children.begin();it!= children.end();it++)
+    {
+        sum+= (*it)->getSize();
+    }
+    return sum;
+}
+
+string Directory::getAbsolutePath() {
+    if(parent!= nullptr) {
+        getParent()->getAbsolutePath();
+        return "/"+getName()+"/";
+    }
+    else{
+        return "/";
+    }
+}
+
+BaseFile* Directory::clone() const { return  new Directory(*this);}
+
+void Directory:: clear(){
+
+    for(vector<BaseFile*> :: iterator it = children.begin(); it != children.end(); it++)
+    {
+        if(typeid(*it) == typeid(Directory))
+            ((Directory*)*it)->clear();
+        delete *it;
+        *it = nullptr;
+    }
+}
+
+void Directory::printChildren(){
+    for (vector<BaseFile *> ::iterator it = children.begin(); it != children.end(); it++) {
+        cout << (*it)->getName() <<  "\t" <<  (*it)->getSize()   << endl ; }
+
+}
+
+bool Directory::containsChild(BaseFile* file) {
+    vector<BaseFile*> :: iterator it;
+    for(it = children.begin(); it != children.end(); it++){
+        if((*it)->getName() == (file)->getName()) {
+            return true;
         }
     }
     return false;
-}
-
-PwdCommand::PwdCommand(string args) : BaseCommand(args) {}
-void PwdCommand::execute(FileSystem &fs) {
-    cout << fs.getWorkingDirectory().getAbsolutePath() << endl;
-}
-
-string PwdCommand::toString() {
-    return "pwd";
-}
-
-CdCommand::CdCommand(string args) : BaseCommand(args) {}
-
-void CdCommand::execute(FileSystem &fs) {
-    if (!isFileExists(getArgs(), fs)) {
-        cout << "The System cannot find the path specified" << endl;
-    }
-    else {
-        Directory *start = getLastDir(getArgs(), fs);
-        fs.setWorkingDirectory(start);
-    }
-}
-
-string CdCommand::toString() {
-    return "cd";
-}
-
-LsCommand::LsCommand(string args) : BaseCommand(args) {
-
-}
-
-void LsCommand::execute(FileSystem &fs) {
-    if(!isFileExists(getArgs(), fs)){
-        cout << "The System cannot find the path specified" << endl;
-    }
-    else {
-        if (getArgs().find("[-s]")) {
-            fs.getWorkingDirectory().sortBySize();
-        } else {
-            fs.getWorkingDirectory().sortByName();
-        }
-        cout << fs.getWorkingDirectory().getName() + "\t" << endl;
-        fs.getWorkingDirectory().printChildren();
-    }
-}
-
-string LsCommand::toString() {
-    return "ls";
-}
-
-MkdirCommand::MkdirCommand(string args) : BaseCommand(args) {
-
-}
-
-void MkdirCommand::execute(FileSystem &fs) {
-    if (isFileExists(getArgs(), fs)) {
-        cout << "The directory already exists" << endl;
-    }
-    else{
-        Directory *start = getLastDir(getArgs(), fs);
-        vector<string> fileNames = splitString(getArgs());
-        for (size_t j = 0; j<fileNames.size(); j++) {
-            if (start->getName() == fileNames[j] || (start->getParent() != nullptr && start->getParent()->getName() == fileNames[j])){
-                continue;
-            }
-            start->addFile(new Directory(fileNames[j], start));
-            if(j != fileNames.size() -1) {
-                start = dynamic_cast<Directory *>(start->getChildren()[start->getChildren().size() - 1]);
-            }
-        }
-    }
-}
-
-string MkdirCommand::toString() {
-    return "mkdir";
-}
-
-MkfileCommand::MkfileCommand(string args) : BaseCommand(args) {
-}
-
-void MkfileCommand::execute(FileSystem &fs) {
-    string path = getArgs().substr(0,getArgs().find_last_of('/'));
-    string newFile = getArgs().substr(getArgs().find_last_of('/')+1);
-    string file = "";
-    string sizeString;
-    size_t k = 0;
-    while (newFile.at(k) != ' ') {  //seperates the last string to the name and size of the newfile
-        file = file + newFile.at(k);
-        k++;
-    }
-    sizeString = newFile.substr((k + 1));
-    int size = atoi(sizeString.c_str());
-    string filePath1 = path + file;
-    vector<string> filePath = splitString(filePath1);
-    if (!isFileExists(path, fs)) {
-        cout << "The System cannot find the path specified" << endl;
-    }
-    else if (isFileExists(filePath1, fs)) {
-        cout << "File already exists" << endl;
-    }
-    else {
-        Directory *start = getLastDir(filePath1, fs);
-        File newOne = File(file, size);
-        start->addFile(dynamic_cast<BaseFile*>(&newOne));
-    }
-}
-
-string MkfileCommand::toString() {
-    return "mkfile";
-}
-
-CpCommand::CpCommand(string args) : BaseCommand(args) {
-
-}
-
-void CpCommand::execute(FileSystem &fs) {
-    string sourcePath = getArgs().substr(0, getArgs().find_last_of(' '));
-    string destinationPath = getArgs().substr(getArgs().find_first_of(' ') + 1);
-    if (!isFileExists(sourcePath, fs)) {
-        cout << "No such file or directory" << endl;
-    }
-    if (!isFileExists(destinationPath, fs)) {
-        cout << "No such file or directory" << endl;
-    } else {
-        Directory *start = getLastDir(sourcePath, fs);
-        Directory *start2 = getLastDir(destinationPath, fs);
-        vector<string> fileNames = splitString(sourcePath);
-        if (fileNames[fileNames.size() - 1] == start->getName()) { //the last file is a directory
-            start2->addFile(new Directory(*start));
-        }
-        else {
-            vector<BaseFile *> children;
-            children = start->getChildren();
-            //go over all (start->getChildren()), check if directory and name = fileName
-            for (int i = 0; i < children.size(); i++) {
-                if (children[i]->getName() == fileNames[fileNames.size()-1]) {
-                    start2->addFile(children[i]);
-                }
-            }
-        }
-    }
-}
-
-string CpCommand::toString() {
-    return "cp";
-}
-
-MvCommand::MvCommand(string args) : BaseCommand(args) {
-
-}
-
-void MvCommand::execute(FileSystem &fs) {
-    string sourcePath = getArgs().substr(0, getArgs().find_last_of(' '));
-    string destinationPath = getArgs().substr(getArgs().find_first_of(' ') + 1);
-    if (!isFileExists(sourcePath, fs)) {
-        cout << "No such file or directory" << endl;
-    }
-    if (!isFileExists(destinationPath, fs)) {
-        cout << "No such file or directory" << endl;
-    }
-    else {
-        Directory *start = getLastDir(sourcePath, fs);
-        Directory *start2 = getLastDir(destinationPath, fs);
-        vector<string> fileNames = splitString(sourcePath);
-        if (fileNames[fileNames.size() - 1] == start->getName()) { //the last file is a directory
-            if (start == &fs.getWorkingDirectory() || start == &fs.getRootDirectory()
-                || start == (fs.getWorkingDirectory().getParent())) {
-                cout << "Can't move directory" << endl;
-            } else {
-                start2->addFile(new Directory(*start));
-                start->getParent()->removeFile(start->getName());
-            }
-        }
-        else {
-            vector<BaseFile *> children;
-            children = start->getChildren();
-            //go over all (start->getChildren()), check if directory and name = fileName
-            for (int i = 0; i < children.size(); i++) {
-                if (children[i]->getName() == fileNames[fileNames.size() - 1]) {
-                    start2->addFile(children[i]);
-                    start->removeFile(children[i]->getName());
-                }
-            }
-        }
-    }
-}
-
-
-string MvCommand::toString() {
-    return "mv";
-}
-
-RenameCommand::RenameCommand(string args) : BaseCommand(args) {
-
-}
-
-void RenameCommand::execute(FileSystem &fs) {
-    string oldNamePos = getArgs().substr(0, getArgs().find_last_of(' '));
-    string newName = getArgs().substr(getArgs().find_last_of(' ')+1);
-    string sameName = oldNamePos.substr(0, getArgs().find_last_of('/') + 1) + newName;
-    string oldName = oldNamePos.substr(oldNamePos.find_last_of('/')+1);
-    if (!isFileExists(oldNamePos, fs)) {
-        cout << "No such file or directory" << endl;
-    }
-    else {
-        Directory *start = getLastDir(oldNamePos, fs);
-        vector<BaseFile *> children;
-        children = start->getChildren();
-        for (int i = 0; i < children.size(); i++) {
-            if(children[i]->getName() == oldName){
-                if(children[i] == &fs.getWorkingDirectory()) {
-                    cout << "Can't rename the working directory" << endl;
-                }
-                else if(!isFileExists(sameName, fs)) {
-                    children[i]->setName(newName);
-                }
-            }
-        }
-    }
-}
-
-string RenameCommand::toString() {
-    return "rename";
-}
-
-RmCommand::RmCommand(string args) : BaseCommand(args) {
-
-}
-
-void RmCommand::execute(FileSystem &fs) {
-    if (!isFileExists(getArgs(), fs)) {
-        cout << "No such file or directory" << endl;
-    } else {
-        Directory *start = getLastDir(getArgs(), fs);
-        string lastFile = getArgs().substr(getArgs().find_last_of('/')+1);
-        vector<BaseFile *> children;
-        int i;
-        if(start->getName() == lastFile){
-            if(start == &fs.getWorkingDirectory() || start == &fs.getRootDirectory()
-               || start == (fs.getWorkingDirectory().getParent())){
-                cout << "Can't remove directory" << endl;
-            }
-            else{
-                delete start;
-            }
-        }
-        else {
-            children = start->getChildren();
-            //go over all (start->getChildren()), check if directory and name = fileName
-            for (i = 0; i < children.size(); i++) {
-                if(children[i]->getName() == lastFile){
-                    start->removeFile(lastFile);
-                }
-            }
-        }
-    }
-}
-
-
-
-string RmCommand::toString() {
-    return "rm";
-}
-
-HistoryCommand::HistoryCommand(string args, const vector<BaseCommand *> &history)
-        : BaseCommand(args), history(history) {
-
-}
-
-void HistoryCommand::execute(FileSystem &fs) {
-    for(int i= 0;i<history.size();i++){
-        cout << i + "\t" + history[i]->toString() +getArgs().substr(getArgs().find_first_of("/")) <<endl;
-    }
-
-}
-
-string HistoryCommand::toString() {
-    return "history";
-}
-
-VerboseCommand::VerboseCommand(string args) : BaseCommand(args) {
-
-}
-
-void VerboseCommand::execute(FileSystem &fs) {
-    int j = atoi(getArgs().c_str());
-    if( j ==0 | j== 1| j==2 |j==3)
-        verbose =j;
-    else
-        cout << "Wrong verbose input";
-}
-
-string VerboseCommand::toString() {
-    return "verbose";
-}
-
-ErrorCommand::ErrorCommand(string args) : BaseCommand(args) {
-
-}
-
-void ErrorCommand::execute(FileSystem &fs) {
-    size_t k = getArgs().find(' ');
-    cout << getArgs().substr(0, k) + ": Unknown command";
-}
-
-string ErrorCommand::toString() {
-    return "ErrorCommand";
-}
-
-ExecCommand::ExecCommand(string args, const vector<BaseCommand *> &history)
-        : BaseCommand(args), history(history) {
-
-}
-
-void ExecCommand::execute(FileSystem &fs) {
-    string number;
-    number = getArgs();
-    int j = atoi(getArgs().c_str());
-    if (j>history.size()-1 | j < 0)
-        cout <<"Command not found";
-    history[j]->execute(fs);
-}
-
-string ExecCommand::toString() {
-    return "exec";
 }
