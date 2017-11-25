@@ -28,7 +28,7 @@ BaseFile* File::clone() const { return  new File(*this);}
 
 Directory::Directory(string name, Directory *parent) : BaseFile(name),parent(parent) ,children(){
 
-    }
+}
 
 
 Directory::Directory(const Directory& other):BaseFile(other.getName()) ,parent(nullptr),children(){
@@ -110,8 +110,8 @@ void Directory:: removeFile(string name) {
             if(typeid(Directory*) == typeid(*it)){
                 dynamic_cast<Directory*>(*it)->clear();
             }
-                delete *it;
-                it = children.erase(it);
+            delete *it;
+            it = children.erase(it);
         }
     }
 }
@@ -157,9 +157,13 @@ int Directory::getSize() {
 }
 
 string Directory::getAbsolutePath() {
-    if(parent!= nullptr)
+    if(parent!= nullptr) {
         getParent()->getAbsolutePath();
-    return getName();
+        return "/"+getName()+"/";
+    }
+    else{
+        return "/";
+    }
 }
 
 BaseFile* Directory::clone() const { return  new Directory(*this);}
